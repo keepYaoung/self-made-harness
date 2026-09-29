@@ -63,11 +63,21 @@
 | `dark.icon.inactive` | `#555555` |
 
 ## Typography
-- **Android UI**: Pretendard JP (Variable) — 한·일·영 공통. 6개 언어 대응
+
+**Android UI 폰트**는 테마 속성 `?attr/appFontFamily` 하나로 지정한다. 폰트 파일(`@font/...`)을 레이아웃·코드에서 직접 가리키지 않는다.
+
+| 로케일 | 폰트 | 이유 |
+|---|---|---|
+| en · ko · ja · es (기본) | Pretendard JP Variable (wght 45–930, 기본 400) | 한·일·라틴 글리프 포함 |
+| zh (`values-zh`) | 시스템 `sans-serif` | Pretendard JP 에 zh 문구 글자의 28%(507자 중 141자)가 없고, 있는 한자도 일본식 자형 |
+| hi (`values-hi`) | 시스템 `sans-serif` | 데바나가리 글리프 없음 |
+
 - **Mac UI**: 시스템 폰트(SF Pro) — `DS.Typography` 가 `.title2 / .headline / .body / .subheadline / .caption / .caption2` 로 매핑. 패널 본문 12–12.5pt
-- **워드마크·숫자 강조**: Eudoxus Sans Bold — 로고타입 "Clipdoggy"(소문자 d), 키패드 숫자
-- **마케팅(스토어·웹)**: 헤드라인 Pretendard Bold–ExtraBold, 영문 서브카피 Eudoxus Sans
-- SUIT Variable: 리소스에만 있고 참조 0건 → 사용 금지 (정리 대상)
+- **워드마크·숫자 강조**: Eudoxus Sans Bold — 로고 옆 "Clipdoggy"(소문자 d), 선택 개수 숫자. 라틴 전용이라 본문에는 쓰지 않는다
+- **마케팅(스토어·웹)**: 헤드라인 Pretendard Bold–ExtraBold, 영문 서브카피 Eudoxus Sans. zh·hi 스토어 이미지는 Noto Sans SC / Noto Sans Devanagari
+- **라이선스**: Pretendard JP · Eudoxus Sans 모두 SIL OFL 1.1
+- **굵기**: Android `textFontWeight` 는 API 28+ 에서만 동작한다 (minSdk 23). API 23–27 에서는 400 으로 보이므로, 굵기가 의미를 가지는 곳은 `Typography.apply/load` 를 쓴다
+- 2026-09-29 정리: SUIT Variable, Eudoxus Regular·Medium 은 참조 0건이라 삭제 (`fix/android-font-locale`)
 
 | Role | Size | Weight | 예 |
 |---|---|---|---|
@@ -162,4 +172,5 @@
 - 파스텔·펄스 색을 텍스트나 상태 표시에 쓰지 않는다 (장식 전용)
 - 브랜드 주황 위에 흰 글씨를 얹지 않는다 — 대비가 부족해서 notice 톤을 따로 뒀다
 - 타이포 6단계 밖의 사이즈를 새로 만들지 않는다
+- 레이아웃·코드에서 폰트 파일(`@font/pretendard_jp_variable` 등)을 직접 참조하지 않는다 — zh·hi 폴백이 깨진다
 - 한 화면에 Primary CTA를 2개 이상 두지 않는다
