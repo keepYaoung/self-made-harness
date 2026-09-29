@@ -7,3 +7,4 @@
 |---|---|---|
 | 스토어 스크린샷 | [store-screenshots.md](work-domains/store-screenshots.md) | 1.0.4 AOS·Mac, 이후 UI 바뀔 때마다 |
 | 릴리즈 QA 시트 | [qa-sheet.md](work-domains/qa-sheet.md) | 1.1.0 · 1.1.1 |
+| 이벤트 시트 | [events.md](work-domains/events.md) | 버전 출시마다 (앱 `docs/events/amplitude_events.csv`, 코드와 28건 어긋남 — 2026-09-29) |

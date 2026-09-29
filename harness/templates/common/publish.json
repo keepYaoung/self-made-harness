@@ -1,0 +1,5 @@
+{
+  "copy": [
+    { "from": "runs/{slug}/p3-make/{파일}", "to": "{app_repo}/{대상 경로}" }
+  ]
+}

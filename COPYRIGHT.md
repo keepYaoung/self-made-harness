@@ -5,7 +5,7 @@
 Copyright (c) 2026 Self-made-Orange. All rights reserved.
 
 비공개 저장소다. 아래 서드파티 구성요소를 제외한 문서·프롬프트·스크립트의 권리는 Self-made-Orange 에 있다.
-`docs/PRD.md`, `design.md` 는 Clipdoggy 제품 정보를 담고 있어 외부 공유 전 확인이 필요하다.
+`docs/PRD.md`, `docs/design.md` 는 Clipdoggy 제품 정보를 담고 있어 외부 공유 전 확인이 필요하다.
 
 ## 서드파티 구성요소
 

@@ -1,0 +1,2 @@
+# 환경 기본값 — 사람마다 다를 수 있는 값. 규칙 수치는 rules.yaml에.
+app_repo: ../clipdoggy   # ClipDoggy 앱 리포 (코드 SOT)

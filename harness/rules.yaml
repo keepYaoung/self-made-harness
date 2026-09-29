@@ -1,0 +1,237 @@
+# 하네스 규칙 SSOT — 수치·개수·허용 목록은 이 파일에만 둔다.
+# docs/design.md · 에이전트 · 가이드는 여기 값을 가리키기만 한다.
+version: 1
+
+source_of_truth:
+  docs: md          # 리포 md가 정본, 노션은 파생 (인터랙션·체크용)
+  product: code     # 앱 리포 코드가 최종 SOT
+
+run:
+  slug: "{version}-{domain}[-{topic}]"   # 예: 1.1.2-ux-menubar · 1.1.2-screenshots · 1.1.2-qa · 1.1.2-events
+  dir: runs/{slug}/
+  state: runs/{slug}/state.json          # verify.mjs만 쓴다
+  resume: 마지막 통과 단계의 다음 단계부터
+
+domains: [ux, screenshots, qa, events]
+out_of_scope: [코드 구현(이벤트 삽입 포함), 스토어 업로드, iOS·Windows 게이트]
+
+pipeline:
+  - { id: P1, name: 수집 }
+  - { id: P2, name: 설계, on_fail: P1 }          # 기능·범위 누락
+  - { id: P3, name: 제작 }
+  - id: HUMAN
+    name: 보강·승인
+    file: runs/{slug}/approval.md               # 사람만 씀
+    invalidated_by: P2·P3 산출물 해시 변경
+    on_reject: P2
+  - { id: P4, name: 대조, on_fail: P3 }
+  - { id: P5, name: 파생 }                       # 이후 노션에서 마지막 검토(비차단)
+
+retry: { max_same_gate_fail: 3, on_exceed: block }   # 사람 보고, 자동 해제 금지
+
+artifacts:                                      # runs/{slug}/ 기준
+  P1: { all: p1-collect/scope.md }
+  P2:
+    ux: [p2-design/references.md, p2-design/screens.md, p2-design/spec.md]
+    screenshots: [p2-design/copy.csv]
+    qa: [p2-design/items.md]
+    events: [p2-design/changes.md]
+  P3:
+    ux: [p3-make/figma.json]                    # 노드 ID + 지문
+    screenshots: [p3-make/raw/*.png, p3-make/out/*.png]
+    qa: ["p3-make/qa-{version}.md"]
+    events: [p3-make/amplitude_events.csv, "p3-make/events-{version}.md"]
+  HUMAN: { all: approval.md }
+  P4: { all: p4-check/report.json }
+  P5:                                           # 노션 동기화 로그 · 파생본 · 복사 목록
+    ux: [p5-derive/sync-log.md, p5-derive/publish.json]
+    screenshots: [p5-derive/publish.json]
+    qa: ["p5-derive/qa-{version}-notion.md", p5-derive/sync-log.md, p5-derive/publish.json]
+    events: [p5-derive/sync-log.md, p5-derive/publish.json]
+    publish_to_app_repo:                        # 정본 복사 위치 (defaults.app_repo 기준)
+      qa: docs/qa/
+      screenshots: design-resource/
+      events: docs/events/
+
+notion_sync:
+  trigger: [사용자 요청, md 정본 갱신, 앱 코드 갱신]   # 별도 승인 불필요
+  order: [pull_checks_to_md_result_column, push_md_to_notion]
+
+agents: { orchestrator: claude-code, P3: multica, cross_review: codex }
+judge: node harness/scripts/verify.mjs          # 누가 돌려도 같은 판정
+
+# ── 판정 ────────────────────────────────────────────────
+# exit 0 통과 · 1 실패/승인 대기 · 2 스크립트 오류 · 3 차단(같은 게이트 3회 실패)
+exit_codes: { pass: 0, fail_or_pending: 1, error: 2, blocked: 3 }
+
+approval:
+  file: runs/{slug}/approval.md
+  required_lines: ["approved: yes", "inputs_sha256: <P2·P3 산출물 해시>"]
+  writer: human_only            # 에이전트 쓰기는 hook으로 차단
+  invalid_if: inputs_sha256 != 현재 P2·P3 해시
+
+# 키워드 검사는 카피·화면 텍스트 열에만 적용 ("~하지 않는다" 류 설명 문장 오탐 방지)
+text_scope:
+  ux: [screens.md 텍스트 열, spec.md 카피 열, figma.json TEXT 노드]
+  screenshots: [copy.csv headline·sub 열, p3-make/raw·out PNG OCR]
+  qa: [항목 표 항목 열]
+
+# 사전 항목은 JS 정규식. 기본은 대소문자 구분, 앞에 (?i) 를 붙이면 무시.
+dictionaries:
+  a_forbidden:      # ★A 평문 저장 암시
+    - "서버에 (저장|보관)"
+    - "(?i)stored (on|in) (our )?(servers?|the cloud)"
+    - "(?i)cloud backup"
+    - "클라우드 백업"
+    - "(?i)we can (read|see) your"
+  a_signal:         # ★A 신뢰 신호 (6개 언어)
+    - "E2EE"
+    - "(?i)end-to-end"
+    - "종단간"
+    - "암호화"
+    - "(?i)encrypt"
+    - "暗号化"
+    - "エンドツーエンド"
+    - "加密"
+    - "端到端"
+    - "(?i)cifrad"
+    - "एन्क्रिप्ट"
+  b_paywall:        # ★B 페이월 — 기기명 "MacBook Pro" 등은 제외
+    - "(?<!(MacBook|iPad|iPhone \\d+|AirPods) )\\bPro\\b"
+    - "(?i)\\bpremium\\b"
+    - "(?i)\\bupgrade\\b"
+    - "(?i)\\bsubscri(be|ption)\\b"
+    - "구독"
+    - "유료"
+  legacy_feature:   # 1.1.0부터 폐기된 기능 문구. 핀(Pin) 기능과 겹치지 않게 PIN·BLE 는 대소문자 구분
+    - "\\bBLE\\b"
+    - "(?i)bluetooth"
+    - "(?i)wi-?fi"
+    - "\\bPIN\\b"
+    - "(?i)\\bpair(ing|ed)?\\b"
+    - "(?i)no cloud"
+    - "(?i)no servers?"
+  personal_data:
+    - "[\\w.+-]+@[\\w-]+\\.[a-z]{2,}"                          # 이메일
+    - "\\b\\w+['’]s (Mac|MacBook|Pixel|Galaxy|iPhone|iPad)"    # 소유자 기기명
+
+design_tokens:      # 출처: docs/design.md (b335d22 재작성본 기준). 어긋나면 tests/design-sync.test.mjs 가 깨진다
+  colors: ["#FDFDFD","#FFFFFF","#F2F2F2","#EEEEEE","#252525","#333333","#666666","#999999","#BDBDBD",
+           "#00A4FF","#4CCE71","#555555","#FF2D2D","#61BF72","#FE5430","#FEB230","#D8D8D8",
+           "#5EC6FF","#FF5050","#FE9800","#FFDDD2","#8A3B1C","#2C2C2C","#B02E12",
+           "#CDC1FF","#BFE3D0","#FFD9B0","#F7C8D8","#BFDDF5","#F2E7A6",
+           "#FFC376","#FFB5B5","#76FFCD","#A5E5FF","#FFF3E0",
+           "#0C0C0C","#1C1C1E","#2C2C2E","#FFC208","#59C7FA","#FF7800",
+           "#FFEAE6","#FFDCDC","#3A2C29","#FF7043",
+           "#00BFFF","#6D7280","#D8DDE3","#D9D9D9","#E57373","#E74C3C","#E9E9E9","#EFF9F1","#F1F1F1","#F5F7FA","#FF4757","#FF6B6B"]
+  forbidden_colors: ["#D92E38"]        # DEV 리본
+  spacing: [4, 8, 12, 16, 20, 24]
+  radius: [0, 2, 4, 6, 8, 12, 16, 20]   # none · xs · thumb · sm · md · lg · xl(16–20)
+  radius_pill: [22, 100]               # 캡슐 — 이 범위 안 값 허용
+  radius_mac_panel: 20
+  font_size: [12, 14, 16, 18, 20, 36]  # 6단계. 11·13·15·17·22·44 는 정리 대상 — 새로 쓰지 않는다
+  cta: { layer_suffix: ".cta", height: 52 }
+  brand_forbidden: ["ClipDoggy"]      # 현재 표기 Clipdoggy
+
+# 산출물 형식 — verify.mjs 가 읽는 열 이름. 템플릿은 harness/templates/
+formats:
+  scope_ux: "| ID | 기능 | 근거 |              (ID = F-01 …)"
+  scope_qa: "| 영역 | 섹션 | 근거 |             (섹션 = qa 시트 섹션 코드)"
+  references: "| # | 앱 | 화면 | 출처 URL | 반영 포인트 |"
+  screens: "| 화면 | 흐름 | 기능 ID | 텍스트 |     (흐름: 동기화·연결·기타, 기능 ID 쉼표 구분)"
+  spec: "카피 열이 있는 표"
+  copy_csv: "platform,slot,lang,headline,sub,feature_id,headline_lines   (platform: aos|mac, headline 줄바꿈은 \\n)"
+  qa_sheet: "머리 '상태: N항목 (P0 a / P1 b / P2 c)' · '# X. 섹션' · | ID | 항목 | 절차 | 기대 | 우선 | 결과 |"
+  figma_json: "{ file_key, nodes: [{ id, name, type, fills[], spacing[], radius[], fontSize, text, height }] }"
+  sync_log: "sync-log.md 에 'notion_items: N' 한 줄"
+  scope_events: "| ID | 키 스펙 | 근거 |  (ID = K-01 …) + event-tools drift 출력 절"
+  changes_events: "| 구분 | event_name | category | 설명 | properties | platform | purpose | 스펙 ID |  (구분: 추가·변경·소거·측정 안 함, 셀 안 | 는 \\|)"
+  delivery_events: "events-{version}.md — '## 목적' '## 퍼널' '## 질문' '## 커버리지' 절"
+  amplitude_live: "{ range_days: 30, events: { <event_name>: <count> } }"
+
+sync_flows: [동기화, 연결]          # ★A2·B1·B2 가 보는 흐름
+paywall_screen: "(?i)(결제|구독|payment|paywall|subscription|checkout)"
+
+unblock:
+  file: runs/{slug}/unblock.md       # 사람만 씀. blocked_at 이후 수정되면 실패 횟수 초기화
+
+gates:
+  common:
+    - { id: ART, stage: 모든 단계, check: "artifacts 파일 전부 존재 (glob 은 1개 이상)" }
+    - { id: APPROVAL, stage: "HUMAN·P4", check: "approval.md 에 approved: yes, inputs_sha256 = 현재 P2·P3 해시", on_fail: pending }
+    - { id: A1, star: A, stage: P4, check: "text_scope 내 a_forbidden 매칭 = 0", on_fail: P2 }
+    - { id: A2, star: A, stage: P4, check: "ux 동기화·연결 흐름마다 / screenshots (platform×lang) 세트마다 a_signal >= 1", on_fail: P2 }
+    - { id: B1, star: B, stage: P4, check: "ux 동기화·연결 흐름 텍스트 · screenshots 카피의 b_paywall 매칭 = 0", on_fail: P2 }
+    - { id: B2, star: B, stage: P4, check: "ux screens.md 동기화·연결 흐름의 paywall_screen 매칭 화면 = 0", on_fail: P2 }
+  ux:
+    - { id: U1, stage: P2, check: "references 행 >= 5, 행마다 http(s) URL", on_fail: P1 }
+    - { id: U2, stage: P2, check: "scope.md 기능 ID 중 screens.md 미매핑 = 0 (G-a)", on_fail: P1 }
+    - { id: U3, stage: P4, check: "figma fills 중 colors 밖 또는 forbidden_colors = 0 (G-b)", on_fail: P3 }
+    - { id: U4, stage: P4, check: "figma spacing ∉ spacing = 0, radius ∉ radius · radius_pill 범위(패널 노드는 radius_mac_panel 허용) = 0, fontSize ∉ font_size = 0", on_fail: P3 }
+    - { id: U5, stage: P4, check: "*.cta 노드 height != 52 = 0", on_fail: P3 }
+    - { id: U6, stage: P4, check: "figma TEXT · screens · spec 카피의 brand_forbidden = 0", on_fail: P3 }
+    - { id: U7, stage: P4, check: "p3-make/figma.json 노드 = p4-check/figma-live.json 노드 (judge가 Figma MCP로 받은 실제 지문)", on_fail: P3 }
+  screenshots:
+    spec:
+      aos: { size: [1024, 1920], count: [5, 8], name: "^(en|ko|ja|zh-CN|es|hi)-str-scrnsht[1-8]\\.png$" }
+      mac: { size: [2880, 1800], count: [3, 10], name: "^(en|ko|ja|zh-CN|es|hi)-mac_screenshot([1-9]|10)\\.png$" }
+      required_langs: [en, ko, ja]
+      status_time: ["09:41", "9:41"]
+    checks:
+      - { id: S1, stage: P4, check: "out/ PNG 파일명·픽셀 크기·(platform×lang) 장수 = spec", on_fail: P3 }
+      - { id: S2, stage: P4, check: "out/ 에 있는 platform 마다 required_langs 전부 존재", on_fail: P3 }
+      - { id: S3, stage: P4, check: "copy.csv headline 줄 수(headline_lines, 없으면 \\n 기준) <= 2", on_fail: P2 }
+      - { id: S4, stage: P4, check: "legacy_feature 매칭 = 0 (카피 + OCR)", on_fail: P2 }
+      - { id: S5, stage: P4, check: "ko·ja·zh-CN 카피 em dash(—) = 0, mac 카피 이모지 = 0", on_fail: P2 }
+      - { id: S6, stage: P4, check: "personal_data 매칭 = 0 (카피 + OCR)", on_fail: P3 }
+      - { id: S7, stage: P4, check: "forbidden_colors 정확 일치 픽셀 = 0, OCR 시각(HH:MM) 은 status_time 만", on_fail: P3 }
+      - { id: S8, stage: P4, check: "brand_forbidden 매칭 = 0 (카피 + OCR)", on_fail: P3 }
+      - { id: S9, stage: P4, check: "out/{lang}-*.png OCR 에 lang_foreign_script 글자 = 0 (언어 혼입)", on_fail: P3 }
+    lang_foreign_script:            # 언어별로 나오면 안 되는 문자 (유니코드 스크립트)
+      en: [Hangul, Hiragana, Katakana]
+      es: [Hangul, Hiragana, Katakana]
+      hi: [Hangul, Hiragana, Katakana]
+      ko: [Hiragana, Katakana]
+      ja: [Hangul]
+      zh-CN: [Hangul, Hiragana, Katakana]
+    ocr: { engine: macos-vision, targets: ["p3-make/raw/*.png", "p3-make/out/*.png"] }
+  qa:
+    - { id: Q1, stage: P4, check: "범위 표(섹션 열 필수) 영역마다 해당 섹션 항목 >= 1", on_fail: P3 }
+    - { id: Q2, stage: P4, check: "모든 행 절차·기대·우선 비어있지 않음, 우선 ∈ {P0,P1,P2}", on_fail: P3 }
+    - { id: Q3, stage: P4, check: "머리 항목 수·P0/P1/P2 분포 = 실제 행 수", on_fail: P3 }
+    - { id: Q4, stage: P4, check: "직전 버전 시트(app_repo/docs/qa)와 항목 제목 중복 = 0", on_fail: P3 }
+    - { id: Q5, stage: P5, check: "노션 파생본 체크박스 수 = 정본 행 수, sync-log notion_items = 정본 행 수, CSV ID 는 전부 정본에 존재", on_fail: P5 }
+
+  # ── 이벤트 시트 (앱 기존 형식 유지 + design-ops 규약 중 이름을 바꾸지 않는 규칙만) ──
+  events:
+    - { id: E1, stage: P4, check: "헤더 = events.columns, 이름 = name_pattern, 이름 중복 0, 현재 시트의 removed 이름 부활 0", on_fail: P3 }
+    - { id: E2, stage: P2, check: "scope.md 키 스펙(K-ID)마다 changes.md 행 >= 1, '측정 안 함' 행은 purpose(사유) 필수", on_fail: P1 }
+    - { id: E3, stage: P4, check: "현재 시트 대비 추가·프로퍼티 변경된 이벤트의 purpose 비어 있음 = 0", on_fail: P3 }
+    - { id: E4, stage: P4, check: "removed 아닌 이벤트의 프로퍼티 키 ∈ pii_props = 0", on_fail: P3 }
+    - { id: A5, star: A, stage: P4, check: "removed 아닌 이벤트의 프로퍼티 키 ∈ clip_content_props = 0 (클립 원문이 분석 서버로 가지 않게)", on_fail: P3 }
+    - { id: B6, star: B, stage: P4, check: "sync_categories 이벤트 프로퍼티·enum 의 b_paywall 매칭 = 0, fakedoor_needs.source 에 sync_fakedoor_values 새로 추가 = 0", on_fail: P2 }
+    - { id: E7, stage: P4, check: "events-{version}.md 에 목적·퍼널·질문·커버리지 절 존재(비어 있지 않음), 시트의 미정 enum(…) 이벤트는 질문 절에 이름이 있음", on_fail: P3 }
+    - { id: E8, stage: P4, check: "implemented=yes 이벤트는 앱 코드에 \"이름\" 리터럴 존재, 코드 호출(track/logEvent 리터럴) 중 시트에 없는 이름 = 0", on_fail: P3 }
+    - { id: E9, stage: P4, report_only: true, check: "p4-check/amplitude-live.json (judge 가 Amplitude MCP 로 받은 30일 발생량) 에서 implemented=yes 인데 0건인 이벤트 — 보고만", on_fail: P3 }
+
+events:
+  sheet: docs/events/amplitude_events.csv          # 앱 리포 정본 (app_repo 기준)
+  columns: [event_name, category, description_ko, properties, platform, implemented, purpose, since]
+  name_pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)+$"
+  implemented_values: ["yes", "no", "removed"]
+  platform_values: [both, all, android, mac]
+  # properties 셀: "key, key(a|b|…), key(mac)" — 괄호 안에 | 가 있으면 enum, 없으면 조건(플랫폼 등)
+  pii_props: [email, name, user_name, nickname, phone, phone_number, device_name, ip, ip_address, location, latitude, longitude, lat, lng]
+  clip_content_props: [content, text, clip_text, clip_content, clipboard_text, body, url, message, raw_text, preview_text]
+  sync_categories: [clipboard, cloud, sync, device, funnel]
+  sync_fakedoor_values: [device_limit, large_file_sync, sync_limit, cross_device, cloud_sync]
+  code:
+    roots: [android/app/src/main, mac/Sources, functions]
+    exclude_dirs: [.build, build, node_modules, test, Tests]
+    extensions: [.kt, .java, .swift, .js, .ts]
+    # 앱의 분석 호출 래퍼 (Android logAmplitudeEvent · Amplitude.logEvent, Mac AnalyticsManager.track · trackAnalytics)
+    call_patterns: ["\\b(?:track|trackAnalytics|logEvent|logAmplitudeEvent)\\(\\s*\"([a-z][a-z0-9_]*)\""]
+    ignore_names: [event_name]
+  delivery_sections: [목적, 퍼널, 질문, 커버리지]
+  changes_columns: [구분, event_name, category, 설명, properties, platform, purpose, 스펙 ID]
+  change_kinds: [추가, 변경, 소거, 측정 안 함]

@@ -1,0 +1,6 @@
+{
+  "range_days": 30,
+  "events": {
+    "{event_name}": 0
+  }
+}

@@ -6,3 +6,5 @@ tool/.cache/
 tool/results/
 tool/artemis-codex/.venv/
 __pycache__/
+harness/node_modules/
+harness/.cache/

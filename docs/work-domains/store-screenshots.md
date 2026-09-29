@@ -8,7 +8,7 @@
 ## 입력
 - 현재 버전의 실제 앱 화면 캡처 (에뮬레이터/시뮬레이터 또는 실기기)
 - 이번 버전에서 강조할 기능 3–5개 (`docs/release-notes-*.md`)
-- `design.md` (색·폰트·Do/Don't), `i18n/strings.csv` (앱 내 문구)
+- `docs/design.md` (색·폰트·Do/Don't), `i18n/strings.csv` (앱 내 문구)
 
 ## 산출물 (규격)
 | 스토어 | 크기 | 장수 | 언어 |
