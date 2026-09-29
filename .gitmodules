@@ -1,0 +1,3 @@
+[submodule "tool/scrapling"]
+	path = tool/scrapling
+	url = https://github.com/keepYaoung/Scrapling.git

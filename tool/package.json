@@ -1,0 +1,13 @@
+{
+  "name": "self-made-harness-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned local mobile automation tools for self-made-harness",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@mobilenext/mobile-mcp": "1.0.3",
+    "xcodebuildmcp": "2.7.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "uibowl": {
+      "type": "http",
+      "url": "https://uibowl.io/api/mcp"
+    },
+    "mobbin": {
+      "type": "http",
+      "url": "https://api.mobbin.com/mcp"
+    },
+    "artemis-codex": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["tool/run.sh", "artemis-codex"]
+    },
+    "scrapling": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["tool/run.sh", "scrapling", "mcp"]
+    }
+  }
+}

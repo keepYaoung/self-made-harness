@@ -1,3 +1,8 @@
 .fablize/
 output/screenshots/raw/*.apk
 output/screenshots/a
+tool/node_modules/
+tool/.cache/
+tool/results/
+tool/artemis-codex/.venv/
+__pycache__/
