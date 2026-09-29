@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   tmpRoot, write, verify, approve, png, copyCsv, goodCopyRows, figmaNodes, qaSheet,
-  goodUx, goodScreenshots, goodQa, UX, SS, QA,
+  goodUx, goodScreenshots, goodQa, UX, SS, QA, figmaJson, liveDigest,
 } from './helpers.mjs';
 
 const fails = (r, id) => assert.equal(r.gate(id)?.pass, false, `${id} 가 실패해야 한다\n${r.out}`);
@@ -13,7 +13,7 @@ const fails = (r, id) => assert.equal(r.gate(id)?.pass, false, `${id} 가 실패
 // ── 전부 통과 기준선 ─────────────────────────────────────
 test('기준선: ux P4 전부 통과 → exit 0', () => {
   const root = tmpRoot(); goodUx(root);
-  const r = verify(root, UX, 'P4');
+  const r = verify(root, UX, 'P4', liveDigest());
   assert.equal(r.code, 0, r.out);
   for (const id of ['ART', 'APPROVAL', 'A1', 'A2', 'B1', 'B2', 'U3', 'U4', 'U5', 'U6', 'U7']) assert.equal(r.gate(id).pass, true, id);
 });
@@ -68,7 +68,7 @@ test('★A1 통과: 절차·기대 열의 "서버에 저장되지 않는다"는 
 test('★A2 실패: ux 연결 흐름에 E2EE 신호 없음', () => {
   const root = tmpRoot(); goodUx(root);
   write(root, UX, 'p2-design/screens.md', '| 화면 | 흐름 | 기능 ID | 텍스트 |\n|---|---|---|---|\n| 메뉴바 패널 | 기타 | F-01 | a |\n| 기기 연결 | 연결 | F-02 | 기기를 연결해요 |\n');
-  fails(verify(root, UX, 'P4'), 'A2');
+  fails(verify(root, UX, 'P4', liveDigest()), 'A2');
 });
 test('★A2 실패: 스크린샷 ko 세트에 신뢰 신호 없음', () => {
   const root = tmpRoot(); goodScreenshots(root);
@@ -78,14 +78,14 @@ test('★A2 실패: 스크린샷 ko 세트에 신뢰 신호 없음', () => {
 });
 test('★B1 실패: 연결 흐름에 "Pro 로 업그레이드" (MacBook Pro 는 통과)', () => {
   const root = tmpRoot(); goodUx(root);
-  assert.equal(verify(root, UX, 'P4').gate('B1').pass, true); // 기준선 텍스트에 MacBook Pro 포함
+  assert.equal(verify(root, UX, 'P4', liveDigest()).gate('B1').pass, true); // 기준선 텍스트에 MacBook Pro 포함
   write(root, UX, 'p2-design/screens.md', '| 화면 | 흐름 | 기능 ID | 텍스트 |\n|---|---|---|---|\n| 메뉴바 패널 | 기타 | F-01 | a |\n| 기기 연결 | 연결 | F-02 | E2EE. 2대 이상은 Pro 로 Upgrade |\n');
-  fails(verify(root, UX, 'P4'), 'B1');
+  fails(verify(root, UX, 'P4', liveDigest()), 'B1');
 });
 test('★B2 실패: 연결 흐름에 구독 결제 화면', () => {
   const root = tmpRoot(); goodUx(root);
   write(root, UX, 'p2-design/screens.md', '| 화면 | 흐름 | 기능 ID | 텍스트 |\n|---|---|---|---|\n| 메뉴바 패널 | 기타 | F-01 | a |\n| 기기 연결 | 연결 | F-02 | E2EE |\n| 구독 결제 | 연결 | F-02 | 월 3,900원 |\n');
-  fails(verify(root, UX, 'P4'), 'B2');
+  fails(verify(root, UX, 'P4', liveDigest()), 'B2');
 });
 
 // ── UX ───────────────────────────────────────────────────
@@ -101,41 +101,47 @@ test('U2 실패: scope 의 F-03 이 화면에 없음', () => {
   const r = verify(root, UX, 'P2');
   fails(r, 'U2'); assert.match(r.gate('U2').violations.join(), /F-03/);
 });
+let current = null; // withNodes 로 바꾼 노드 — Figma 도 같은 상태라고 본다
 const withNodes = (root, mut) => {
-  const nodes = mut(figmaNodes());
-  write(root, UX, 'p3-make/figma.json', JSON.stringify({ nodes }));
-  write(root, UX, 'p4-check/figma-live.json', JSON.stringify({ nodes }));
+  current = mut(figmaNodes());
+  write(root, UX, 'p3-make/figma.json', JSON.stringify(figmaJson(current)));
   approve(root, UX);
 };
 test('U3 실패: 토큰 밖 색 · DEV 리본 색', () => {
   const root = tmpRoot(); goodUx(root);
   withNodes(root, (n) => { n[0].fills = ['#123456']; n[1].fills = ['#D92E38']; return n; });
-  const r = verify(root, UX, 'P4');
+  const r = verify(root, UX, 'P4', liveDigest(current));
   fails(r, 'U3'); assert.equal(r.gate('U3').violations.length, 2);
 });
 test('U4 실패: 간격 10 · 라운드 10 · 글자 22(정리 대상) — 캡슐 40 은 통과', () => {
   const root = tmpRoot(); goodUx(root);
   withNodes(root, (n) => { n[2].spacing = [10]; n[2].radius = [10, 40]; n[1].fontSize = 22; return n; });
-  const r = verify(root, UX, 'P4');
+  const r = verify(root, UX, 'P4', liveDigest(current));
   fails(r, 'U4'); assert.equal(r.gate('U4').violations.length, 3);
 });
 test('U5 실패: CTA 높이 48', () => {
   const root = tmpRoot(); goodUx(root);
   withNodes(root, (n) => { n[2].height = 48; return n; });
-  fails(verify(root, UX, 'P4'), 'U5');
+  fails(verify(root, UX, 'P4', liveDigest(current)), 'U5');
 });
 test('U6 실패: 옛 표기 ClipDoggy', () => {
   const root = tmpRoot(); goodUx(root);
   withNodes(root, (n) => { n[1].text = 'ClipDoggy 에 오신 걸 환영해요'; return n; });
-  fails(verify(root, UX, 'P4'), 'U6');
+  fails(verify(root, UX, 'P4', liveDigest(current)), 'U6');
 });
-test('U7 실패: figma.json 이 실제 Figma 와 다름 · live 없음', () => {
+test('U7 실패: figma.json 이 실제 Figma 와 다름 · 지문 없음 · 다른 파일', () => {
   const root = tmpRoot(); goodUx(root);
-  const live = figmaNodes(); live[3].text = '연결하기';
-  write(root, UX, 'p4-check/figma-live.json', JSON.stringify({ nodes: live }));
-  fails(verify(root, UX, 'P4'), 'U7');
-  fs.rmSync(path.join(root, 'runs', UX, 'p4-check/figma-live.json'));
-  fails(verify(root, UX, 'P4'), 'U7');
+  const live = figmaNodes(); live[3].text = '연결하기'; // 보강 뒤 figma.json 을 다시 안 뽑은 경우
+  let r = verify(root, UX, 'P4', liveDigest(live));
+  fails(r, 'U7'); assert.match(r.gate('U7').violations.join(), /실제 Figma 가 다름/);
+  r = verify(root, UX, 'P4');
+  fails(r, 'U7'); assert.match(r.gate('U7').violations.join(), /Figma 지문 없음/);
+  assert.equal(verify(root, UX, 'P4', '--figma-digest=nothex').code, 2, '지문 형식 오류는 exit 2');
+});
+test('U7: --figma-code 는 figma.json frame_ids 로 digest 코드를 출력', () => {
+  const root = tmpRoot(); goodUx(root);
+  const r = verify(root, UX, null, '--figma-code');
+  assert.equal(r.code, 0); assert.match(r.out, /const MODE = "digest";/); assert.match(r.out, /const FRAME_IDS = \["1:1"\];/);
 });
 
 // ── 스크린샷 ─────────────────────────────────────────────

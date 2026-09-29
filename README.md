@@ -13,7 +13,7 @@
 | `docs/story-service.md` · `docs/story-work.md` | 서비스 맥락(★ 어기면 안 되는 것) · 손작업 흐름 |
 | `CLAUDE.md` · `AGENTS.md` | 하네스 입구 — Claude 전용 / 모든 에이전트 공용 |
 | `harness/rules.yaml` | 규칙 SSOT — 파이프라인 · 게이트 · 사전 · 토큰 수치 |
-| `harness/scripts/` | 판정(`verify.mjs`) · 저장(`save-blocks.mjs`) · QA/이벤트 도구 · 점수(`score.mjs`) · guard hook |
+| `harness/scripts/` | 판정(`verify.mjs`) · 저장(`save-blocks.mjs`) · QA/이벤트 도구 · Figma 지문(`figma-export.figma.js`) · 점수(`score.mjs`) · guard hook 3개 |
 | `harness/templates/` · `harness/guides/` | 단계별 산출물 양식 · 업무별 가이드 |
 | `harness/tests/` | 게이트별 통과·실패 테스트 (`node --test harness/tests/*.test.mjs`) |
 | `.claude/` | 에이전트 5개 · `run-harness` 스킬 · hook 설정 |

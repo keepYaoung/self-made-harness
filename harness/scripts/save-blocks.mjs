@@ -6,9 +6,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runState } from './lib/stage.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const FOLDER = { P1: ['p1-collect/'], P2: ['p2-design/'], P3: ['p3-make/'], P5: ['p5-derive/'], JUDGE: ['p4-check/figma-live.json', 'p4-check/amplitude-live.json'], REVIEW: ['review/'] };
+const FOLDER = { P1: ['p1-collect/'], P2: ['p2-design/'], P3: ['p3-make/'], P5: ['p5-derive/'], JUDGE: ['p4-check/amplitude-live.json'], REVIEW: ['review/'] };
 const PROTECTED = /(^|\/)(approval\.md|unblock\.md|state\.json|p4-check\/report\.json)$/;
 
 const argv = process.argv.slice(2);
@@ -17,6 +18,14 @@ const runsDir = path.resolve(argv.find((a) => a.startsWith('--runs-dir='))?.slic
 if (!slug || !FOLDER[role]) {
   console.error('사용: save-blocks.mjs <slug> <P1|P2|P3|P5|JUDGE|REVIEW> < 출력');
   process.exit(2);
+}
+
+// 지금 단계의 역할만 저장한다 (state.json 의 다음 단계). REVIEW 는 언제나 가능
+const st = runState(runsDir, slug);
+const stageOf = { P1: 'P1', P2: 'P2', P3: 'P3', P5: 'P5', JUDGE: 'P4' };
+if (role !== 'REVIEW') {
+  if (!st) { console.error(`[save-blocks] runs/${slug}/state.json 없음 — 먼저 verify.mjs ${slug} --init`); process.exit(1); }
+  if (st.next !== stageOf[role]) { console.error(`[save-blocks] 지금 단계는 ${st.next ?? '완료'} — ${role} 결과를 저장하지 않는다`); process.exit(1); }
 }
 
 const input = fs.readFileSync(0, 'utf8');

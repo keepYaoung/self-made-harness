@@ -5,6 +5,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { figmaDigest } from '../scripts/lib/digest.mjs';
 
 export const HARNESS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const ROOT = path.resolve(HARNESS, '..');
@@ -23,8 +24,8 @@ export function write(root, slug, rel, content) {
   fs.writeFileSync(p, content);
 }
 
-export function verify(root, slug, stage) {
-  const args = [VERIFY, slug, `--runs-dir=${path.join(root, 'runs')}`, `--app-repo=${path.join(root, 'app')}`];
+export function verify(root, slug, stage, ...extra) {
+  const args = [VERIFY, slug, `--runs-dir=${path.join(root, 'runs')}`, `--app-repo=${path.join(root, 'app')}`, ...extra];
   if (stage) args.push(`--stage=${stage}`);
   const r = spawnSync('node', args, { encoding: 'utf8' });
   const rp = path.join(root, 'runs', slug, 'p4-check/report.json');
@@ -77,6 +78,10 @@ export function figmaNodes() {
   ];
 }
 
+export const figmaJson = (nodes) => ({ file_key: 'abc', frame_ids: ['1:1'], nodes });
+// judge 가 Figma 에서 받았을 지문 = 기준선 노드의 지문
+export const liveDigest = (nodes = figmaNodes()) => `--figma-digest=${figmaDigest(figmaJson(nodes))}`;
+
 export function goodUx(root) {
   const s = UX;
   write(root, s, 'p1-collect/scope.md', '| ID | 기능 | 근거 |\n|---|---|---|\n| F-01 | 클립 목록 | TODO 3 |\n| F-02 | 기기 연결 | TODO 4 |\n');
@@ -84,8 +89,7 @@ export function goodUx(root) {
   write(root, s, 'p2-design/references.md', `| # | 앱 | 화면 | 출처 URL | 반영 포인트 |\n|---|---|---|---|---|\n${refs}\n`);
   write(root, s, 'p2-design/screens.md', '| 화면 | 흐름 | 기능 ID | 텍스트 |\n|---|---|---|---|\n| 메뉴바 패널 | 기타 | F-01 | 복사한 클립이 여기 모여요 |\n| 기기 연결 | 연결 | F-02 | 종단간 암호화(E2EE)로 안전하게 연결해요. MacBook Pro 도 돼요 |\n');
   write(root, s, 'p2-design/spec.md', '| 요소 | 카피 |\n|---|---|\n| 제목 | 복사한 클립이 여기 모여요 |\n| CTA | 기기 연결하기 |\n');
-  write(root, s, 'p3-make/figma.json', JSON.stringify({ file_key: 'abc', nodes: figmaNodes() }, null, 2));
-  write(root, s, 'p4-check/figma-live.json', JSON.stringify({ file_key: 'abc', nodes: figmaNodes() }, null, 2));
+  write(root, s, 'p3-make/figma.json', JSON.stringify(figmaJson(figmaNodes()), null, 2));
   approve(root, s);
 }
 

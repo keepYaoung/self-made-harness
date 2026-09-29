@@ -11,21 +11,36 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { strip, tables, tablesWith, csv, parseQa, countQa } from './lib/md.mjs';
 import { eventRowsFrom, parseProps, propsKey, scanCode, drift } from './lib/events.mjs';
+import { figmaDigest, digestCode, DIGEST_RE } from './lib/digest.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS = path.resolve(HERE, '..');
 const ROOT = path.resolve(HARNESS, '..');
 const STAGES = ['P1', 'P2', 'P3', 'HUMAN', 'P4', 'P5'];
-const EXIT = { pass: 0, fail: 1, error: 2, blocked: 3 };
+const EXIT = { pass: 0, fail: 1, error: 2, blocked: 3, review: 4 };
 
 // ── 입력 ─────────────────────────────────────────────────
 function parseArgs(argv) {
-  const out = { slug: null, stage: null, runsDir: path.join(ROOT, 'runs'), appRepo: null, hashOnly: false };
+  const out = { slug: null, stage: null, runsDir: path.join(ROOT, 'runs'), appRepo: null, hashOnly: false, figmaDigest: null, figmaCode: false, init: false, figmaUrl: null, status: false, reopen: null, proceed: false, rulesPath: null };
   for (const a of argv) {
     if (a.startsWith('--stage=')) out.stage = a.slice(8);
     else if (a.startsWith('--runs-dir=')) out.runsDir = path.resolve(a.slice(11));
     else if (a.startsWith('--app-repo=')) out.appRepo = path.resolve(a.slice(11));
     else if (a === '--hash') out.hashOnly = true;
+    else if (a === '--figma-code') out.figmaCode = true;
+    else if (a === '--init') out.init = true;
+    else if (a.startsWith('--rules=')) out.rulesPath = path.resolve(a.slice(8)); // 테스트용 규칙 파일
+    else if (a.startsWith('--figma=')) out.figmaUrl = a.slice(8);
+    else if (a === '--status') out.status = true;
+    else if (a === '--proceed') out.proceed = true;
+    else if (a.startsWith('--reopen=')) {
+      out.reopen = a.slice(9);
+      if (!STAGES.includes(out.reopen)) throw new Error(`--reopen 은 ${STAGES.join('|')}`);
+    }
+    else if (a.startsWith('--figma-digest=')) {
+      out.figmaDigest = a.slice(15);
+      if (!DIGEST_RE.test(out.figmaDigest)) throw new Error(`--figma-digest 형식이 아니다: ${out.figmaDigest}`);
+    }
     else if (!a.startsWith('--') && !out.slug) out.slug = a;
     else throw new Error(`알 수 없는 인자: ${a}`);
   }
@@ -68,13 +83,13 @@ function glob(dir, pattern) {
 
 // ── 실행 컨텍스트 ─────────────────────────────────────────
 function context(args) {
-  const rules = load(path.join(HARNESS, 'rules.yaml'));
+  const rules = load(args.rulesPath ?? path.join(HARNESS, 'rules.yaml'));
   const defaults = load(path.join(HARNESS, 'defaults.yaml'));
   const { version, domain, topic } = parseSlug(args.slug);
   const run = path.join(args.runsDir, args.slug);
   const appRepo = args.appRepo ?? path.resolve(ROOT, defaults.app_repo);
   const fill = (p) => p.replaceAll('{version}', version).replaceAll('{slug}', args.slug);
-  return { rules, version, domain, topic, run, appRepo, slug: args.slug, fill, ocrCache: null };
+  return { rules, version, domain, topic, run, appRepo, slug: args.slug, fill, ocrCache: null, args };
 }
 
 function artifactList(ctx, stage) {
@@ -190,7 +205,13 @@ const G = {
     if (!/^approved:\s*yes\s*$/m.test(t)) v.push("'approved: yes' 없음");
     const m = /^inputs_sha256:\s*([0-9a-f]{64})\s*$/m.exec(t);
     if (!m) v.push(`'inputs_sha256: ${hash}' 없음`);
-    else if (m[1] !== hash) v.push(`승인 이후 P2·P3 산출물이 바뀜 — 승인 무효 (현재 ${hash})`);
+    else if (m[1] !== hash) {
+      // 무효가 된 승인은 지우지 않고 보관한다 → 사람이 현재 산출물로 다시 승인
+      let n = 1;
+      while (fs.existsSync(path.join(ctx.run, `approval-stale-${n}.md`))) n++;
+      fs.renameSync(path.join(ctx.run, 'approval.md'), path.join(ctx.run, `approval-stale-${n}.md`));
+      v.push(`승인 이후 P2·P3 산출물이 바뀜 — 승인 무효, approval-stale-${n}.md 로 보관 (현재 ${hash})`);
+    }
     return v;
   },
 
@@ -295,15 +316,15 @@ const G = {
   },
 
   U7(ctx) {
-    const live = readJson(path.join(ctx.run, 'p4-check/figma-live.json'));
-    if (!live) return ['p4-check/figma-live.json 없음 — judge 가 Figma MCP 로 받은 실제 지문이 필요하다'];
-    const norm = (n) => JSON.stringify({ id: n.id, name: n.name, type: n.type, fills: (n.fills ?? []).map((f) => String(f).toUpperCase()).sort(),
-      spacing: [...(n.spacing ?? [])].sort(), radius: [...(n.radius ?? [])].sort(), fontSize: n.fontSize ?? null, text: n.text ?? null, height: n.height ?? null });
-    const a = new Map(figmaNodes(ctx).map((n) => [n.id, norm(n)]));
-    const b = new Map((live.nodes ?? []).map((n) => [n.id, norm(n)]));
+    // judge 가 `--figma-code` 로 받은 코드를 그대로 use_figma 로 돌려 얻은 지문만 믿는다 (파일 경유 없음)
+    const f = readJson(path.join(ctx.run, 'p3-make/figma.json'));
+    if (!f) return ['p3-make/figma.json 없음'];
+    if (!ctx.args.figmaDigest) return [`Figma 지문 없음 — judge: verify.mjs ${ctx.slug} --figma-code → use_figma → verify.mjs ${ctx.slug} --stage=P4 --figma-digest=<지문>`];
     const v = [];
-    for (const [id, s] of a) if (!b.has(id)) v.push(`${id}: 실제 Figma 에 없음`); else if (b.get(id) !== s) v.push(`${id}: figma.json 과 실제 Figma 가 다름`);
-    for (const id of b.keys()) if (!a.has(id)) v.push(`${id}: figma.json 에 없음`);
+    const want = loadState(ctx).figma_file_key;
+    if (want && f.file_key !== want) v.push(`figma.json 이 다른 파일에서 나옴 (${f.file_key} ≠ 실행 ${want})`);
+    const mine = figmaDigest(f);
+    if (mine !== ctx.args.figmaDigest) v.push(`figma.json 과 실제 Figma 가 다름 (노드 수 figma.json ${mine.split('-')[1]} · Figma ${ctx.args.figmaDigest.split('-')[1]}) — figma-export.figma.js 로 다시 내보낸다`);
     return v;
   },
 
@@ -383,7 +404,8 @@ const G = {
         const re = new RegExp(`\\p{Script=${script}}`, 'gu');
         const hits = o.lines.filter((l) => {
           const n = (l.text.match(re) ?? []).length;
-          return l.pass === passOf[script] && n >= 3 && n / l.text.replace(/\s/g, '').length >= 0.6;
+          const { min_chars, min_ratio } = ctx.rules.gates.screenshots.ocr.lang_mix;
+          return l.pass === passOf[script] && n >= min_chars && n / l.text.replace(/\s/g, '').length >= min_ratio;
         }).map((l) => l.text);
         for (const h of hits) v.push(`${o.rel}: ${lang} 세트에 ${script} "${h}"`);
       }
@@ -679,8 +701,53 @@ function main() {
     console.log(inputsHash(ctx).hash);
     return EXIT.pass;
   }
+  if (args.figmaCode) {
+    const f = readJson(path.join(ctx.run, 'p3-make/figma.json'));
+    if (!f?.frame_ids?.length) { console.error('[verify] p3-make/figma.json 에 frame_ids 가 없다'); return EXIT.error; }
+    console.log(`file_key: ${f.file_key}`);
+    console.log('===== use_figma code (한 글자도 바꾸지 말고 실행) =====');
+    console.log(digestCode(f.frame_ids));
+    return EXIT.pass;
+  }
 
   const st = loadState(ctx);
+  const say = (msg, code) => { console.log(msg); return code; };
+
+  if (args.init) {
+    if (fs.existsSync(path.join(ctx.run, 'state.json'))) return say(`[verify] ${ctx.slug} 는 이미 있다 — 이어서 하려면 --status`, EXIT.error);
+    const key = args.figmaUrl?.match(/figma\.com\/(?:design|file)\/([A-Za-z0-9]+)/)?.[1] ?? null;
+    if (ctx.domain === 'ux' && !key) return say('[verify] ux 실행은 --figma=<Figma 파일 URL> 이 필요하다', EXIT.error);
+    Object.assign(st, { figma_url: args.figmaUrl, figma_file_key: key, awaiting_review: null, created_at: new Date().toISOString() });
+    st.history.push({ at: st.created_at, event: 'init' });
+    saveState(ctx, st);
+    return say(`[verify] ${ctx.slug} 시작 — 다음 P1`, EXIT.pass);
+  }
+  if (args.status) {
+    const next = nextStage(st);
+    console.log(`[verify] ${ctx.slug} · 통과 ${st.passed.join(' → ') || '없음'} · 다음 ${next ?? '완료'}`);
+    if (Object.keys(st.fails).length) console.log(`  실패 횟수 ${JSON.stringify(st.fails)}`);
+    if (st.blocked_at) return say(`  🛑 차단 (${st.blocked_at}) — 사람이 unblock.md 를 써야 풀린다`, EXIT.blocked);
+    if (st.awaiting_review) return say(`  👀 ${st.awaiting_review} 산출물 사용자 확인 대기 — 진행 지시 뒤 --proceed`, EXIT.review);
+    return EXIT.pass;
+  }
+  if (args.proceed) {
+    if (!st.awaiting_review) return say('[verify] 사용자 확인 대기 상태가 아니다', EXIT.error);
+    st.history.push({ at: new Date().toISOString(), event: 'reviewed', stage: st.awaiting_review });
+    console.log(`[verify] ▶️ ${st.awaiting_review} 확인 완료 → 다음 ${nextStage(st) ?? '완료'}`);
+    st.awaiting_review = null;
+    saveState(ctx, st);
+    return EXIT.pass;
+  }
+  if (args.reopen) {
+    st.passed = st.passed.filter((s) => STAGES.indexOf(s) < STAGES.indexOf(args.reopen));
+    st.awaiting_review = null;
+    st.history.push({ at: new Date().toISOString(), event: 'reopened', from: args.reopen });
+    saveState(ctx, st);
+    return say(`[verify] ${ctx.slug} ${args.reopen} 부터 다시 연다 (산출물은 그대로)`, EXIT.pass);
+  }
+  if (st.awaiting_review) {
+    return say(`[verify] 👀 ${st.awaiting_review} 산출물 사용자 확인 대기 — 사용자가 진행을 지시하면 --proceed, 수정이면 --reopen=${st.awaiting_review}`, EXIT.review);
+  }
 
   // 차단 해제: 사람이 unblock.md 를 blocked_at 이후에 썼으면 초기화
   if (st.blocked_at) {
@@ -727,6 +794,7 @@ function main() {
   if (status === 'pass') {
     if (!st.passed.includes(stage)) st.passed.push(stage);
     for (const r of results) delete st.fails[r.id];
+    if ((ctx.rules.review_after ?? []).includes(stage)) st.awaiting_review = stage;
   } else {
     // 이 단계 이후로 통과 기록을 되돌린다
     st.passed = st.passed.filter((s) => STAGES.indexOf(s) < STAGES.indexOf(stage));
@@ -753,6 +821,7 @@ function main() {
     for (const w of (r.warnings ?? []).slice(0, 8)) console.log(`       ! (보고만) ${w}`);
     if ((r.violations?.length ?? 0) > 8) console.log(`       … 외 ${r.violations.length - 8}건 (report.json)`);
   }
+  if (st.awaiting_review === stage && status === 'pass') console.log(`  👀 사용자 확인 대기 — 산출물을 보여 드리고 진행 지시를 받은 뒤 --proceed`);
   if (pending) console.log(`  승인 대기: runs/${ctx.slug}/approval.md 에 'approved: yes' 와 'inputs_sha256: ${report.inputs_sha256}'`);
 
   if (blocked.length) return EXIT.blocked;

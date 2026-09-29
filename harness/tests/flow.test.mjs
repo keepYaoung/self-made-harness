@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { tmpRoot, write, verify, goodQa, qaSheet, QA, HARNESS, ROOT } from './helpers.mjs';
+import { tmpRoot, write, verify, goodQa, qaSheet, QA, HARNESS, ROOT, liveDigest } from './helpers.mjs';
 
 test('exit 2: slug 형식 오류', () => {
   const root = tmpRoot();
@@ -63,6 +63,9 @@ test('회귀: 실제 qa-1.1.1.md (앱 리포 있으면) — Q3 통과, Q1 섹션
 const save = (root, slug, role, input) => spawnSync('node', [path.join(HARNESS, 'scripts/save-blocks.mjs'), slug, role, `--runs-dir=${path.join(root, 'runs')}`], { input, encoding: 'utf8' });
 test('save-blocks: 역할 폴더 안만 저장, 하나라도 어긋나면 전부 거부', () => {
   const root = tmpRoot();
+  assert.equal(save(root, QA, 'P1', `<<<FILE runs/${QA}/p1-collect/a.md\na\n>>>\n`).status, 1, 'init 전에는 저장 안 함');
+  write(root, QA, 'state.json', JSON.stringify({ passed: ['P1'], fails: {}, history: [] }));
+  assert.equal(save(root, QA, 'P3', `<<<FILE runs/${QA}/p3-make/a.md\na\n>>>\n`).status, 1, '지금 단계(P2)가 아닌 역할은 거부');
   const ok = save(root, QA, 'P2', `설명\n<<<FILE runs/${QA}/p2-design/items.md\n| ID | 항목 |\n>>>\n`);
   assert.equal(ok.status, 0, ok.stderr);
   assert.equal(fs.readFileSync(path.join(root, 'runs', QA, 'p2-design/items.md'), 'utf8'), '| ID | 항목 |\n');
@@ -71,12 +74,14 @@ test('save-blocks: 역할 폴더 안만 저장, 하나라도 어긋나면 전부
   assert.equal(fs.existsSync(path.join(root, 'runs', QA, 'p2-design/a.md')), false, '부분 저장 없음');
   assert.equal(save(root, QA, 'P3', `<<<FILE runs/${QA}/approval.md\napproved: yes\n>>>\n`).status, 1);
   assert.equal(save(root, QA, 'P1', `<<<FILE runs/${QA}/../../etc/x\nx\n>>>\n`).status, 1);
-  assert.equal(save(root, QA, 'JUDGE', `<<<FILE runs/${QA}/p4-check/figma-live.json\n{}\n>>>\n`).status, 0);
+  write(root, QA, 'state.json', JSON.stringify({ passed: ['P1', 'P2', 'P3', 'HUMAN'], fails: {}, history: [] }));
+  assert.equal(save(root, QA, 'JUDGE', `<<<FILE runs/${QA}/p4-check/amplitude-live.json\n{}\n>>>\n`).status, 0);
+  assert.equal(save(root, QA, 'JUDGE', `<<<FILE runs/${QA}/p4-check/figma-live.json\n{}\n>>>\n`).status, 1, 'Figma 는 파일이 아니라 지문으로만');
   assert.equal(save(root, QA, 'JUDGE', `<<<FILE runs/${QA}/p4-check/report.json\n{}\n>>>\n`).status, 1);
 });
 
 // guard hook — 모의 입력
-const guard = (name, input) => spawnSync('node', [path.join(HARNESS, 'scripts', name)], { input: typeof input === 'string' ? input : JSON.stringify(input) }).status;
+const guard = (name, input, root = null) => spawnSync('node', [path.join(HARNESS, 'scripts', name)], { input: typeof input === 'string' ? input : JSON.stringify(input), env: { ...process.env, ...(root ? { CLAUDE_PROJECT_DIR: root } : {}) } }).status;
 test('guard-write: 보호 파일·서브에이전트 쓰기 차단, 일반 저장 허용', () => {
   const W = 'guard-write.mjs';
   assert.equal(guard(W, { tool_name: 'Write', tool_input: { file_path: '/r/runs/1.1.2-qa/approval.md' } }), 2);
@@ -84,7 +89,12 @@ test('guard-write: 보호 파일·서브에이전트 쓰기 차단, 일반 저�
   assert.equal(guard(W, { tool_name: 'Edit', tool_input: { file_path: 'runs/1.1.2-qa/state.json' } }), 2);
   assert.equal(guard(W, { tool_name: 'Edit', tool_input: { file_path: 'runs/1.1.2-qa/p4-check/report.json' } }), 2);
   assert.equal(guard(W, { tool_name: 'Write', agent_type: 'planner', tool_input: { file_path: 'runs/1.1.2-qa/p2-design/items.md' } }), 2);
-  assert.equal(guard(W, { tool_name: 'Write', tool_input: { file_path: 'runs/1.1.2-qa/p2-design/items.md' } }), 0);
+  const root = tmpRoot(); goodQa(root); verify(root, QA, 'P1'); // 다음 단계 = P2
+  const at = (rel) => ({ tool_name: 'Write', cwd: root, tool_input: { file_path: rel } });
+  assert.equal(guard(W, at('runs/1.1.2-qa/p2-design/items.md'), root), 0, '지금 단계 폴더는 허용');
+  assert.equal(guard(W, at('runs/1.1.2-qa/p3-make/x.md'), root), 2, '다음 단계 폴더는 차단');
+  assert.equal(guard(W, at('runs/1.9.9-qa/p1-collect/scope.md'), root), 2, 'state.json 없는 실행은 차단');
+  assert.equal(guard(W, at('harness/rules.yaml'), root), 0, 'runs/ 밖은 관여 안 함');
   assert.equal(guard(W, { tool_name: 'Bash', tool_input: { command: 'echo approved: yes > runs/1.1.2-qa/approval.md' } }), 2);
   assert.equal(guard(W, { tool_name: 'Bash', tool_input: { command: 'printf x | tee -a runs/a/state.json' } }), 2);
   assert.equal(guard(W, { tool_name: 'Bash', tool_input: { command: 'cp /tmp/x runs/a/approval.md' } }), 2);
@@ -102,4 +112,72 @@ test('guard-judge: judge 는 verify.mjs 와 MCP 읽기만', () => {
   assert.equal(guard(J, { tool_name: 'mcp__figma__get_metadata', agent_type: 'judge', tool_input: {} }), 0);
   assert.equal(guard(J, { tool_name: 'mcp__figma__use_figma', agent_type: 'judge', tool_input: {} }), 2);
   assert.equal(guard(J, { tool_name: 'Bash', agent_type: 'maker', tool_input: { command: 'ls' } }), 0);
+});
+
+// ── 실행 수명주기: init · status · review_after · proceed · reopen · 승인 보관 ──
+import YAML from 'yaml';
+import { goodUx, UX, approve } from './helpers.mjs';
+const rulesWithReview = (root, stages) => {
+  const r = YAML.parse(fs.readFileSync(path.join(HARNESS, 'rules.yaml'), 'utf8'));
+  r.review_after = stages;
+  const p = path.join(root, 'rules-review.yaml');
+  fs.writeFileSync(p, YAML.stringify(r));
+  return `--rules=${p}`;
+};
+test('init: ux 는 Figma URL 필수, file_key 를 state 에 남긴다 · 두 번 init 은 exit 2', () => {
+  const root = tmpRoot();
+  assert.equal(verify(root, UX, null, '--init').code, 2);
+  assert.equal(verify(root, UX, null, '--init', '--figma=https://www.figma.com/design/AbC123/x').code, 0);
+  const st = JSON.parse(fs.readFileSync(path.join(root, 'runs', UX, 'state.json'), 'utf8'));
+  assert.equal(st.figma_file_key, 'AbC123');
+  assert.equal(verify(root, UX, null, '--init', '--figma=https://www.figma.com/design/AbC123/x').code, 2);
+});
+test('U7: figma.json 이 init 때와 다른 Figma 파일에서 나오면 실패', () => {
+  const root = tmpRoot();
+  verify(root, UX, null, '--init', '--figma=https://www.figma.com/design/OTHER/x');
+  goodUx(root);
+  const r = verify(root, UX, 'P4', liveDigest());
+  assert.match(r.gate('U7').violations.join(), /다른 파일/);
+});
+test('review_after: 통과 뒤 확인 대기(exit 4) → proceed 로만 다음 단계, status 도 4', () => {
+  const root = tmpRoot(); goodQa(root);
+  const R = rulesWithReview(root, ['P1']);
+  const r1 = verify(root, QA, null, R);
+  assert.equal(r1.code, 0); assert.match(r1.out, /사용자 확인 대기/);
+  assert.equal(verify(root, QA, null, R).code, 4, '확인 전에는 다음 단계 판정 안 함');
+  assert.equal(verify(root, QA, null, R, '--status').code, 4);
+  assert.equal(verify(root, QA, null, R, '--proceed').code, 0);
+  assert.equal(verify(root, QA, null, R, '--proceed').code, 2, '대기 아닐 때 proceed 는 오류');
+  assert.equal(verify(root, QA, null, R).report.stage, 'P2');
+});
+test('reopen: 지정 단계부터 통과 기록을 되돌린다', () => {
+  const root = tmpRoot(); goodQa(root);
+  for (const s of ['P1', 'P2', 'P3']) assert.equal(verify(root, QA, s).code, 0);
+  assert.equal(verify(root, QA, null, '--reopen=P2').code, 0);
+  const st = JSON.parse(fs.readFileSync(path.join(root, 'runs', QA, 'state.json'), 'utf8'));
+  assert.deepEqual(st.passed, ['P1']);
+  assert.equal(verify(root, QA, null, '--reopen=P9').code, 2);
+});
+test('APPROVAL: 무효가 된 승인은 approval-stale-<n>.md 로 보관되고 승인 대기로', () => {
+  const root = tmpRoot(); goodQa(root);
+  write(root, QA, 'p3-make/qa-1.1.2.md', qaSheet() + '\n바뀜\n');
+  const r = verify(root, QA, 'HUMAN');
+  assert.equal(r.code, 1); assert.match(r.out, /approval-stale-1\.md/);
+  assert.ok(fs.existsSync(path.join(root, 'runs', QA, 'approval-stale-1.md')));
+  assert.equal(fs.existsSync(path.join(root, 'runs', QA, 'approval.md')), false);
+  approve(root, QA);
+  assert.equal(verify(root, QA, 'HUMAN').code, 0, '현재 산출물로 다시 승인하면 통과');
+});
+test('guard-judge: judge 는 init·proceed·reopen·rules 를 못 쓴다', () => {
+  for (const f of ['--init', '--proceed', '--reopen=P1', '--rules=x.yaml'])
+    assert.equal(guard('guard-judge.mjs', { tool_name: 'Bash', agent_type: 'judge', tool_input: { command: `node harness/scripts/verify.mjs 1.1.2-qa ${f}` } }), 2, f);
+});
+
+test('guard-review: 확인 대기 중이면 작업 에이전트 호출 차단, judge 는 통과', () => {
+  const root = tmpRoot(); goodQa(root);
+  const call = (t) => guard('guard-review.mjs', { tool_name: 'Agent', tool_input: { subagent_type: t } }, root);
+  assert.equal(call('planner'), 0);
+  write(root, QA, 'state.json', JSON.stringify({ passed: ['P1'], fails: {}, history: [], awaiting_review: 'P1' }));
+  assert.equal(call('planner'), 2);
+  assert.equal(call('judge'), 0);
 });

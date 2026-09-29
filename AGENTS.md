@@ -35,6 +35,9 @@ frontmatter의 `tools`·`disallowedTools`는 Claude Code 전용 표기다. 다�
   - 결과 블록 저장: `node harness/scripts/save-blocks.mjs <slug> <P1|P2|P3|P5|JUDGE|REVIEW> < 출력`
   - QA 통계·파생본·노션 결과 반영: `node harness/scripts/qa-tools.mjs <fill-stats|derive|merge-results> <slug>`
   - 이벤트 드리프트·시트 적용: `node harness/scripts/event-tools.mjs <drift|apply> <version>-events`
+  - Figma 노드 내보내기·지문: `harness/scripts/figma-export.figma.js` (export 모드 = maker, digest 모드 = judge — 코드 본문을 고치지 않는다)
+- 실행은 `verify.mjs <slug> --init` 으로 시작한다. `runs/<slug>/` 에는 지금 단계 폴더에만 쓴다 (`--status` 로 확인)
+- `rules.yaml` `sources` 에서 `임의` 인 값은 하네스가 정한 값 — 사용자 확인 대상이다
 
 ## 리뷰 · 점수
 - 하네스 점수는 `node harness/scripts/score.mjs` 출력 **그대로** 쓴다 (100점, 항목별 근거 포함). 에이전트가 따로 점수를 매기지 않는다.

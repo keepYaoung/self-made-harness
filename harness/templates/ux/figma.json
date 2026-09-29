@@ -1,5 +1,6 @@
 {
   "file_key": "{Figma 파일 키}",
+  "frame_ids": ["{프레임 노드 ID}"],
   "nodes": [
     { "id": "{노드 ID}", "name": "{레이어 이름 — CTA 는 .cta 로 끝남}", "type": "{FRAME · TEXT · …}", "fills": ["{#RRGGBB}"], "spacing": [], "radius": [], "fontSize": null, "text": null, "height": 0 }
   ]

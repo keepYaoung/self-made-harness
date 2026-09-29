@@ -5,6 +5,11 @@
 // 3) 하네스 서브에이전트는 Write/Edit 금지 — 결과를 블록으로 돌려주고 메인 세션이 저장
 // 차단 = exit 2 + stderr
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runState, FOLDER_OF } from './lib/stage.mjs';
+
+const ROOT = process.env.CLAUDE_PROJECT_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const HARNESS_AGENTS = new Set(['collector', 'planner', 'maker', 'publisher', 'judge']);
 const HUMAN_ONLY = /(^|\/)runs\/[^/]+\/(approval|unblock)\.md$/;
@@ -43,6 +48,16 @@ if (WRITE_TOOLS.has(tool)) {
   if (SCRIPT_ONLY.test(p)) block(`${p} 는 verify.mjs 만 쓴다.`);
   if (agent && HARNESS_AGENTS.has(agent)) {
     block(`${agent} 는 파일을 직접 쓰지 않는다. <<<FILE 경로 … >>> 블록으로 돌려줘라.`);
+  }
+  // 4) runs/<slug>/ 안은 지금 단계 폴더에만 (state.json 의 다음 단계)
+  const rel = path.relative(path.join(ROOT, 'runs'), path.resolve(input.cwd ?? ROOT, p));
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+    const [slug, folder] = rel.split(path.sep);
+    const st = runState(path.join(ROOT, 'runs'), slug);
+    if (!st) block(`runs/${slug} 에 state.json 이 없다 — 먼저 node harness/scripts/verify.mjs ${slug} --init`);
+    const allowed = FOLDER_OF[st.next];
+    if (!allowed) block(`지금 단계(${st.next ?? '완료'})에서는 runs/${slug} 에 쓸 산출물이 없다${st.next ? '' : ' — 고치려면 --reopen'}`);
+    if (folder !== allowed) block(`지금 단계는 ${st.next} — runs/${slug}/${allowed}/ 에만 쓸 수 있다 (요청: ${folder}/)`);
   }
 }
 

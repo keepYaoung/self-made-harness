@@ -14,7 +14,7 @@
 | `screenshots/copy.csv` | P2 | `p2-design/copy.csv` | A2 · B1 · S3–S6 · S8 |
 | `qa/items.md` | P2 | `p2-design/items.md` | — |
 | `events/changes.md` | P2 | `p2-design/changes.md` | E2 (→ `event-tools.mjs apply`) |
-| `ux/figma.json` | P3 | `p3-make/figma.json` · judge 는 같은 형식으로 `p4-check/figma-live.json` | U3–U7 |
+| `ux/figma.json` | P3 | `p3-make/figma.json` — `scripts/figma-export.figma.js` export 모드 출력 그대로 | U3–U7 (U7 은 judge 의 `--figma-digest`) |
 | `qa/qa-sheet.md` | P3 | `p3-make/qa-{version}.md` | Q1–Q4 · A1 |
 | `events/delivery.md` | P3 | `p3-make/events-{version}.md` | E7 |
 | `events/amplitude-live.json` | P4 (judge) | `p4-check/amplitude-live.json` | E9 |

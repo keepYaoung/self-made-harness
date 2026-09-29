@@ -52,7 +52,10 @@ const add = (area, max, got, why) => items.push({ area, max, got: Math.max(0, Ma
 {
   const docs = ['AGENTS.md', 'CLAUDE.md', '.claude/skills/run-harness/SKILL.md', ...fs.readdirSync(rel('.claude/agents')).map((f) => `.claude/agents/${f}`)];
   const hits = docs.flatMap((d) => [...read(d).matchAll(/#[0-9A-Fa-f]{6}\b/g)].map((m) => `${d}:${m[0]}`));
-  add('규칙 SSOT (수치 복사 없음)', 10, 10 - 2 * hits.length, hits.length ? `복사된 hex: ${hits.slice(0, 5).join(', ')}` : 'hex 복사 0건');
+  const src = rules.sources ?? {};
+  const arbitrary = Object.values(src).filter((v) => v === '임의').length;
+  const srcOk = Object.keys(src).length > 0 && titles.some((x) => /sources:/.test(x));
+  add('규칙 SSOT · 값 출처(임의 표시)', 10, Math.max(0, 5 - hits.length) + (srcOk ? 5 : 0), `${hits.length ? `복사된 hex: ${hits.slice(0, 3).join(', ')}` : 'hex 복사 0건'} · 출처 표 ${Object.keys(src).length}개 (임의 ${arbitrary})`);
 }
 
 // 5. 사람 승인은 파일 하나 · 입력이 바뀌면 무효
@@ -68,16 +71,16 @@ const add = (area, max, got, why) => items.push({ area, max, got: Math.max(0, Ma
   const agents = fs.readdirSync(rel('.claude/agents')).map((f) => f.replace(/\.md$/, ''));
   const agentsMd = read('AGENTS.md');
   const listed = agents.filter((a) => new RegExp(`\\|\\s*${a}\\s*\\|`).test(agentsMd));
-  const saver = exists('harness/scripts/save-blocks.mjs') && titles.some((x) => /save-blocks/.test(x));
+  const saver = exists('harness/scripts/save-blocks.mjs') && titles.some((x) => /save-blocks/.test(x)) && titles.some((x) => /guard-write/.test(x)) && /runState/.test(read('harness/scripts/guard-write.mjs'));
   const judge = /agent_type !== 'judge'/.test(read('harness/scripts/guard-judge.mjs')) && /guard-judge\.mjs/.test(read('.claude/settings.json'));
-  add('편집 범위 강제', 10, 4 * (listed.length / Math.max(1, agents.length)) + (saver ? 3 : 0) + (judge ? 3 : 0), `AGENTS.md 역할표 ${listed.length}/${agents.length} · save-blocks ${saver ? 'O' : 'X'} · judge 제한 ${judge ? 'O' : 'X'}`);
+  add('편집 범위 강제', 10, 4 * (listed.length / Math.max(1, agents.length)) + (saver ? 3 : 0) + (judge ? 3 : 0), `AGENTS.md 역할표 ${listed.length}/${agents.length} · 지금 단계 폴더만 저장 ${saver ? 'O' : 'X'} · judge 제한 ${judge ? 'O' : 'X'}`);
 }
 
 // 7. 도구 결과는 대조한다
 {
-  const u7 = allGates.some((g) => g.id === 'U7') && titles.some((x) => /U7/.test(x));
+  const u7 = allGates.some((g) => g.id === 'U7') && titles.some((x) => /digest parity/.test(x)) && titles.some((x) => /use_figma 는 digest 코드만/.test(x));
   const ocr = titles.some((x) => /회귀: 1\.0\.4/.test(x));
-  add('도구 결과 대조 (Figma 지문 · OCR)', 10, (u7 ? 6 : 0) + (ocr ? 4 : 0), `U7 ${u7 ? 'O' : 'X'} · 실제 이미지 회귀 ${ocr ? 'O' : 'X'}`);
+  add('도구 결과 대조 (Figma 지문 · OCR)', 10, (u7 ? 6 : 0) + (ocr ? 4 : 0), `Figma 지문(코드 고정 · 파일 경유 없음) ${u7 ? 'O' : 'X'} · 실제 이미지 OCR 회귀 ${ocr ? 'O' : 'X'}`);
 }
 
 // 8. 실패에는 길과 한도가 있다
