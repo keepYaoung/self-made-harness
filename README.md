@@ -18,7 +18,7 @@
 - [x] Claude Code 설치 (Pro+)
 - [x] GitHub 계정 · 빈 작업 리포 (이 리포)
 - [x] Figma MCP 연결 (Figma Pro+)
-- [ ] UI Bowl MCP 연결 (무료) — 서버 등록됨 `https://uibowl.io/api/mcp`, OAuth 로그인 필요
+- [x] UI Bowl MCP 연결 (무료) — `https://uibowl.io/api/mcp`
 - [x] Mobbin MCP 연결 (claude.ai 커넥터)
 - [x] `docs/PRD.md` 5블록 — Clipdoggy
 - [x] `design.md` 초안 — Clipdoggy 코드 토큰 기반 (확인 필요 항목 있음)

@@ -1,6 +1,6 @@
 # design.md — Clipdoggy
 
-> 값의 출처: ClipDoggy `android/app/src/main/res/values/{colors,dimens}.xml`, 레이아웃 XML, `mac/Sources`.
+> 값의 출처: ClipDoggy `android/app/src/main/res/values/{colors,dimens}.xml`, 레이아웃 XML, `mac/Sources/KeyPlayer/Views/{DesignTokens,ClipboardPanelView}.swift`, `docs/release-notes-1.1.1.md`.
 > `(확인 필요)` 표시는 코드에서 추론한 값이라 Figma(soonr Design Library)와 대조가 필요함.
 
 ## Philosophy
@@ -52,7 +52,7 @@
 |---|---|---|
 | `clip.pastel.1–6` | `#CDC1FF` `#BFE3D0` `#FFD9B0` `#F7C8D8` `#BFDDF5` `#F2E7A6` | 클립 미리보기 상단 블록 (클립별 순환) |
 | `pulse.*` | `#FFC376`↔`#FFB5B5`, `#76FFCD`↔`#FFC376`, `#A5E5FF`↔`#76FFCD` | 배경 펄스 그라데이션 |
-| `brand.orange` | `#FE5430` (확인 필요) | Beta 배지 텍스트 · 브랜드 주황 |
+| `brand.orange` | `#FE5430` (확인 필요 — Figma 원본 대조) | Beta 배지 텍스트 · 브랜드 주황 |
 | `icon.bg` | `#FFF3E0` | 앱 아이콘 배경 |
 
 ### Image mode (dark)
@@ -63,9 +63,11 @@
 | `dark.icon.inactive` | `#555555` |
 
 ## Typography
-- **UI 기본**: Pretendard JP (Variable) — 한·일·영 공통. 6개 언어 대응
-- **워드마크·숫자 강조**: Eudoxus Sans Bold — 로고타입 "Clipdoggy"(소문자), 키패드 숫자
-- 보조 보유: SUIT Variable (현재 미사용 — 확인 필요)
+- **Android UI**: Pretendard JP (Variable) — 한·일·영 공통. 6개 언어 대응
+- **Mac UI**: 시스템 폰트(SF Pro) — `DS.Typography` 가 `.title2 / .headline / .body / .subheadline / .caption / .caption2` 로 매핑. 패널 본문 12–12.5pt
+- **워드마크·숫자 강조**: Eudoxus Sans Bold — 로고타입 "Clipdoggy"(소문자 d), 키패드 숫자
+- **마케팅(스토어·웹)**: 헤드라인 Pretendard Bold–ExtraBold, 영문 서브카피 Eudoxus Sans
+- SUIT Variable: 리소스에만 있고 참조 0건 → 사용 금지 (정리 대상)
 
 | Role | Size | Weight | 예 |
 |---|---|---|---|
@@ -77,6 +79,25 @@
 | Caption | 12sp | Regular | 시간·메타 |
 
 규칙: 사이즈는 위 6단계만 쓴다 (13/15/17sp 등 파생값은 정리 대상).
+
+## Platform mapping
+
+| 역할 | Android | Mac |
+|---|---|---|
+| 간격·라운드·아이콘 | `dimens.xml` | `DS.Spacing / Radius / IconSize` (동일 값) |
+| 색 | 커스텀 hex 토큰 (위 표) | **시스템 시맨틱** — `DS.Color.primary=.blue, success=.green, warning=.orange, error=.red`, 표면은 같은 색 10% |
+| 다크 모드 | 라이트 전용 (이미지 모드만 다크) | 라이트·다크 모두 — 패널 배경 `white 0.97` / `windowBackground`, 카드 `white 0.99` / `white 0.16` |
+| 패널/시트 라운드 | 16 | 패널 **20**, 테두리 `primary @ 28%` 1pt, 반투명 머티리얼 |
+| 아이콘 | 벡터 드로어블 | **Lucide** (stroke 2, 24 캔버스) — SF Symbol 폴백 |
+| Primary CTA | `LayeredCtaButton` | `DarkPillCTA` (캡슐, 라이트 `white 0.90` / 다크 `white 0.26`) |
+
+### Mac 클립 카테고리 색
+| Token | Value | 용도 |
+|---|---|---|
+| `mac.category.text` | `#FFC208` | 텍스트 (메모지 톤) |
+| `mac.category.image` | `#59C7FA` | 이미지 |
+| `mac.category.file` | `#FF7800` | 파일 |
+| `mac.devRibbon` | `#D92E38` | DEV 리본 (스토어 캡처에 노출 금지) |
 
 ## Layout
 - **간격 스케일**: 4 · 8 · 12 · 16 · 20 · 24 (dp/pt)
@@ -102,6 +123,33 @@
 - **빈 상태**: 아이콘(`text.tertiary`) + 다음 행동 1개 제시
 - **키보드 (Mac)**: ←→ 이미지 · ↑↓ 텍스트 · Tab 패널 전환 · Enter 복사 · Esc 닫기 · ⌘1–9 즉시
 - **리뷰 요청**: 성공 전송 5·30·50·100회에 1회만
+
+## Iconography & illustration
+- **UI 아이콘**: 선형(stroke) 아이콘. Mac 은 Lucide, 슬롯은 정사각이 아니라 **잉크 폭** 기준으로 맞춰 글자와 간격을 균일하게
+- **브랜드 일러스트**: 거친 마커 질감의 손그림 흑백 — 집게 클립 마스코트, 발바닥 🐾, 손그림 화살표
+- 일러스트는 흑백 + 파스텔 배경 한 가지 조합만. 그라데이션·3D·사진풍 금지
+
+## Voice & copy
+- **해요체**, 짧게. 한 문장에 한 가지. 기능명보다 사용자가 얻는 것 ("폰에서 복사, 맥북에 붙여넣기")
+- 브랜드 표기: **Clipdoggy** (소문자 d). 과거 표기 "ClipDoggy" 신규 사용 금지
+- 6개 언어(en/ko/ja/zh-CN/es/hi) 동시 작성. 영어가 기본(fallback)
+- **ko / ja / zh 카피에 em dash(—) 금지**
+- **Apple 심사용(App Store) 카피에 이모지 금지**, Play Store 는 허용
+- Play Store 패치노트 언어당 500자 이내, 언어 태그 뒤 줄바꿈
+- 현재 기능만 말한다 — 클라우드 동기화·E2EE 기준. BLE / Wi‑Fi 직접 / PIN 페어링 / "No Cloud" 문구는 1.1.0부터 폐기
+
+## Marketing imagery (스토어·웹)
+- 배경 흰색 `#FDFDFD`, 헤드라인 상단 중앙 `text.primary`, 기기 목업 하단
+- 장식은 손그림 화살표·마스코트만. 스톡 사진·타사 UI(AirDrop 등) 금지
+- 화면 속 데이터는 연출용 가짜 데이터 — 실제 이메일·기기명·개인정보 금지, 링크는 `clipdoggy.com`
+- 상태바 09:41 · 배터리 가득 · 알림 없음. DEV 리본 노출 금지
+- 규격: Google Play 1024×1920, Mac App Store 2880×1800
+
+## Accessibility
+- 흰 글씨는 어두운 배경 위에만 — 브랜드 주황·파스텔 위 흰 글씨 금지 (notice 톤을 따로 둔 이유)
+- 터치 타깃 Android 48dp 이상, Primary CTA 52dp
+- 색만으로 상태를 전달하지 않는다 — 라벨 텍스트("받음/보냄/실패")를 함께
+- Mac 은 모든 핵심 동작을 키보드로 완결
 
 ## Do / Don't
 **Do**
