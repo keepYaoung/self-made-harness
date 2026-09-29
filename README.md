@@ -9,7 +9,7 @@
 |---|---|
 | `docs/PRD.md` | 서비스 컨텍스트 — 5블록 PRD |
 | `design.md` | 디자인 기준 — 철학 · 컬러 · 타이포 · 레이아웃 · 컴포넌트 · Do/Don't |
-| `docs/work-domain.md` | 하네스로 자동화할 반복 업무 1개 |
+| `docs/work-domains.md` | 하네스로 자동화할 반복 업무 (스크린샷 · QA 시트) |
 
 워크숍에서 여기에 Claude 프롬프트와 프로세스 게이트가 추가됩니다.
 
@@ -22,4 +22,4 @@
 - [x] Mobbin MCP 연결 (claude.ai 커넥터)
 - [x] `docs/PRD.md` 5블록 — Clipdoggy
 - [x] `design.md` 초안 — Clipdoggy 코드 토큰 기반 (확인 필요 항목 있음)
-- [ ] `docs/work-domain.md` 업무 1개 고르기
+- [x] `docs/work-domains.md` — 스토어 스크린샷 · QA 시트
